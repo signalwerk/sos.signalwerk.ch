@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Encrypt and Decrypt</title>
+  </head>
+
+  <body>
+    <h2>Decrypt Content</h2>
+    <label for="passwordDecrypt">Password: (login password)</label>
+    <input type="password" id="passwordDecrypt" /><br /><br />
+    <button onclick="decryptContent()">Decrypt</button><br /><br />
+
+    <div id="result"></div>
+
+    <details>
+      <summary>Encrypt</summary>
+      <div>
+        <h2>Encrypt Content</h2>
+        <label for="inputText">Input Text:</label>
+        <textarea id="inputText" rows="4" cols="50"></textarea><br /><br />
+        <label for="passwordEncrypt">Password:</label>
+        <input type="password" id="passwordEncrypt" /><br /><br />
+        <button onclick="encryptContent()">Encrypt</button><br /><br />
+        <label for="encryptedContent">Encrypted Content:</label>
+        <textarea id="encryptedContent" rows="4" cols="50"></textarea
+        ><br /><br />
+        <button onclick="copyToClipboard()">Copy to Clipboard</button
+        ><br /><br />
+      </div>
+    </details>
+
+    <script>
+      async function encryptContent() {
+        const inputText = document.getElementById("inputText").value;
+        const password = document.getElementById("passwordEncrypt").value;
+        const encoder = new TextEncoder();
+        const data = encoder.encode(inputText);
+        const passwordData = encoder.encode(password);
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const keyMaterial = await window.crypto.subtle.importKey(
+          "raw",
+          passwordData,
+          { name: "PBKDF2" },
+          false,
+          ["deriveKey"]
+        );
+        const key = await window.crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt: salt, iterations: 1000, hash: "SHA-256" },
+          keyMaterial,
+          { name: "AES-CBC", length: 256 },
+          true,
+          ["encrypt", "decrypt"]
+        );
+        const iv = crypto.getRandomValues(new Uint8Array(16));
+        const encryptedContent = await window.crypto.subtle.encrypt(
+          { name: "AES-CBC", iv: iv },
+          key,
+          data
+        );
+        const encryptedArray = new Uint8Array(encryptedContent);
+        const combinedArray = new Uint8Array(
+          salt.length + iv.length + encryptedArray.length
+        );
+        combinedArray.set(salt, 0);
+        combinedArray.set(iv, salt.length);
+        combinedArray.set(encryptedArray, salt.length + iv.length);
+        const base64Encrypted = btoa(
+          String.fromCharCode.apply(null, combinedArray)
+        );
+        document.getElementById("encryptedContent").value = base64Encrypted;
+      }
+
+      async function decryptContent() {
+        // const encryptedBase64 = document.getElementById("encryptedContent").value;
+
+        const response = await fetch("./content.enc");
+        const encryptedBase64 = await response.text();
+
+        const password = document.getElementById("passwordDecrypt").value;
+        const encryptedData = Uint8Array.from(atob(encryptedBase64), (c) =>
+          c.charCodeAt(0)
+        );
+
+        const salt = encryptedData.slice(0, 16);
+        const iv = encryptedData.slice(16, 32);
+        const actualEncryptedData = encryptedData.slice(32);
+        const passwordData = new TextEncoder().encode(password);
+        const keyMaterial = await window.crypto.subtle.importKey(
+          "raw",
+          passwordData,
+          { name: "PBKDF2" },
+          false,
+          ["deriveKey"]
+        );
+        const key = await window.crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt: salt, iterations: 1000, hash: "SHA-256" },
+          keyMaterial,
+          { name: "AES-CBC", length: 256 },
+          true,
+          ["encrypt", "decrypt"]
+        );
+        const decryptedContent = await window.crypto.subtle.decrypt(
+          { name: "AES-CBC", iv: iv },
+          key,
+          actualEncryptedData
+        );
+        const decoder = new TextDecoder();
+        const decryptedText = await decoder.decode(decryptedContent);
+        document.getElementById("result").innerText = decryptedText;
+      }
+
+      function copyToClipboard() {
+        const textarea = document.getElementById("encryptedContent");
+        textarea.select();
+        document.execCommand("copy");
+      }
+    </script>
+  </body>
+</html>
